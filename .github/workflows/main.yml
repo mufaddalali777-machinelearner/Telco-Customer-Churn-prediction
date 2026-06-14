@@ -1,0 +1,59 @@
+name: ML Pipeline CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' # Speeds up subsequent workflow runs
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8  # Adding a syntax linter
+          pip install -r requirements.txt
+
+      - name: Lint code for syntax errors
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Verify Model Artifacts Exist
+        run: |
+          echo "Checking for required production model assets..."
+          test -f dt_model.joblib || { echo "❌ dt_model.joblib missing!"; exit 1; }
+          test -f churn_nn_model.onnx || { echo "❌ churn_nn_model.onnx missing!"; exit 1; }
+          test -f scalar_nn.joblib || { echo "❌ scalar_nn.joblib missing!"; exit 1; }
+          echo "✅ All model artifacts verified successfully."
+
+      - name: Test API Code Dry-Run
+        run: |
+          echo "Verifying that Uvicorn can parse and load the worker applications..."
+          python -m uvicorn ch_log_api:app --workers 1 &
+          LOG_PID=$!
+          sleep 3
+          kill $LOG_PID
+
+          python -m uvicorn ch_nn_api:app --workers 1 &
+          NN_PID=$!
+          sleep 3
+          kill $NN_PID
+
+          python -m uvicorn ch_xg_api:app --workers 1 &
+          XG_PID=$!
+          sleep 3
+          kill $XG_PID
+          echo "✅ All three microservice modules loaded successfully without critical errors!"
