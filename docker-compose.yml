@@ -1,0 +1,15 @@
+version: '3.8'
+
+services: 
+  churn-multi-port-api:
+    build: .
+    container_name: churn_multi_port_container
+    ports:
+      - "4000:4000"  # Route to Logistic Regression worker
+      - "5000:5000"  # Route to Neural Network worker
+      - "6001:6001"  # Route to XGBoost worker
+    command: >
+      sh -c "uvicorn ch_log_api:app --host 0.0.0.0 --port 4000 &
+             uvicorn ch_nn_api:app --host 0.0.0.0 --port 5000 &
+             uvicorn ch_xg_api:app --host 0.0.0.0 --port 6001"
+    restart: always
